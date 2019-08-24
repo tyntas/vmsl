@@ -1,0 +1,20 @@
+#!/bin/sh
+
+screen='/usr/bin/screen'
+
+echo "Minecraft Server Launcer v0.1"
+
+cd "$(dirname "$0")"
+$screen -L -S minecraft -dm java -Xms2G -Xmx2G -jar mcs-latest.jar nogui || exit 1
+
+sleep 1
+session=`$screen -list | grep ".minecraft" | cut -f2`
+if [ "$session" = "" ]; then
+    echo "Something went wrong while launching minecraft inside the screen."
+    echo "Check the log file screenlog.0 for the details."
+    exit 2
+fi
+
+echo "Minecraft Server launched within a screen session ($session)."
+echo "Run \`screen -r minecraft\` to attach to server console."
+

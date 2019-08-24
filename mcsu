@@ -1,0 +1,70 @@
+#!/bin/sh
+
+# config
+curl='/usr/bin/curl'
+jq='/usr/bin/jq'
+versionManifestURL='https://launchermeta.mojang.com/mc/game/version_manifest.json'
+
+echo "Minecraft Server Updater v0.1"
+
+versionsJSON=`mktemp`
+latestJSON=`mktemp`
+
+cd "$(dirname "$0")"
+
+# check the current version
+echo -n "Checking the local version..."
+currentVersion=`readlink mcs-latest.jar | cut -d'-' -f2 | cut -d'.' -f-3`
+if [ "$currentVersion" = "" ]; then echo " none."; else echo " $currentVersion"; fi
+
+
+# find the latest version
+echo -n "Checing the latest available version..."
+$curl -sS $versionManifestURL > $versionsJSON || exit 1
+latestVersion=`$jq -r '.latest.release' $versionsJSON` || exit 2
+echo " $latestVersion"
+
+
+# check if there's anything to update
+if [ "$currentVersion" = "$latestVersion" ]; then
+    echo "You have the latest version deployed. Nothing to update."
+    exit 0
+fi
+
+# find file info for the latest version
+latestJSONURL=`$jq -r ".versions[] | select(.id==\"$latestVersion\").url" $versionsJSON` || exit 2
+$curl -sS $latestJSONURL > $latestJSON || exit 1
+latestServerJarURL=`$jq -r '.downloads.server.url' $latestJSON` || exit 2
+echo $latestServerJarURL
+latestServerJarSHA1=`$jq -r '.downloads.server.sha1' $latestJSON` || exit 2
+echo $latestServerJarSHA1
+
+# get the latest JAR
+latestJAR="mcs-${latestVersion}.jar"
+echo "Downloading $latestServerJarURL"
+$curl $latestServerJarURL > $latestJAR || exit 1
+echo -n "Verifying the hash against $latestServerJarSHA1..."
+downloadedSHA1=`sha1sum $latestJAR | cut -d' ' -f1`
+if [ "$downloadedSHA1" = "$latestServerJarSHA1" ]; then echo "OK."; else
+    echo "Failed."
+    echo "The hash value of dowloaded JAR ($downloadedSHA1) is not matching the anounced one ($latestServerJarSHA1)."
+    echo "Exiting."
+    exit 3
+fi
+
+# update the symlink
+if [ "$currentVersion" != "" ]; then
+    echo -n "Replacing"
+    rm mcs-latest.jar
+else
+    echo -n "Creating"
+fi
+echo " symlink mcs-latest.jar"
+ln -s $latestJAR mcs-latest.jar
+
+# cleanup
+rm $versionsJSON
+rm $latestJSON
+
+echo "All done. Ready to go!"
+echo "(Restart your server now)"
